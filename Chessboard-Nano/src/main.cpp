@@ -1,20 +1,31 @@
 #include <Arduino.h>
-// #include <Wire.h>
+#include <Wire.h>
 
-// const uint8_t I2C_ADDRESS = 0x88;
+const uint8_t I2C_ADDRESS = 0x55;
 
 const uint8_t rowPins[8] = {2, 3, 4, 5, 6, 7, 8, 9};         // outputs
 const uint8_t colPins[8] = {10, 11, 12, A0, A1, A2, A3, A6}; // inputs
 
 #define bitSet64(value, bit) ((value) |= (1ULL << (bit)))
 #define bitClear64(value, bit) ((value) &= ~(1ULL << (bit)))
-#define bitWrite64(value, bit, bitvalue) (bitvalue ? bitSet(value, bit) : bitClear(value, bit))
+#define bitWrite64(value, bit, bitvalue) (bitvalue ? bitSet64(value, bit) : bitClear64(value, bit))
 
 uint64_t lastBoard = 0;
 uint64_t board = 0;
 
+uint8_t registerAddr = 0;
+
 uint64_t scanBoard();
 void printBoard();
+void onWireReceiveEvent(int count);
+void onWireRequestEvent();
+
+// clang-format off
+union packed_uint64_t {
+  uint64_t number;
+  uint8_t bytes[8];
+} packedBoard;
+// clang-format on
 
 void setup() {
   Serial.begin(9600);
@@ -33,19 +44,20 @@ void setup() {
     }
   }
 
-  // Wire.begin(I2C_ADDRESS);
-  // Wire.onRequest(onWireRequestEvent);
+  Wire.begin(I2C_ADDRESS);
+  Wire.onReceive(onWireReceiveEvent);
+  Wire.onRequest(onWireRequestEvent);
 }
 
 void loop() {
-  noInterrupts();
   board = scanBoard();
-  interrupts();
   if (lastBoard != board) {
     lastBoard = board;
+    noInterrupts();
+    packedBoard.number = board;
+    interrupts();
     Serial.println("Board state: ");
     printBoard();
-    Serial.println();
   }
 }
 
@@ -72,14 +84,16 @@ void printBoard() {
   }
 }
 
-// void onWireRequestEvent() {
-//   uint8_t boardBytes[8];
-//   uint64ToBytes(boardBytes, board);
-//   Wire.write(boardBytes, 8);
-// }
+void onWireReceiveEvent(int count) {
+  registerAddr = Wire.read();
+}
 
-// void uint64ToBytes(uint8_t* bytes, uint64_t& x) {
-//   x = (uint64_t(bytes[0]) << 8 * 0) | (uint64_t(bytes[1]) << 8 * 1) | (uint64_t(bytes[2]) << 8 * 2) |
-//       (uint64_t(bytes[3]) << 8 * 3) | (uint64_t(bytes[4]) << 8 * 4) | (uint64_t(bytes[5]) << 8 * 5) |
-//       (uint64_t(bytes[6]) << 8 * 6) | (uint64_t(bytes[7]) << 8 * 7);
-// }
+void onWireRequestEvent() {
+  const uint8_t boardOffset = 0x90;
+  if (registerAddr >= boardOffset && registerAddr < boardOffset + 8) {
+    Wire.write(packedBoard.bytes[registerAddr - boardOffset]);
+  } else {
+    Wire.write((uint8_t)0);
+  }
+  registerAddr++;
+}
