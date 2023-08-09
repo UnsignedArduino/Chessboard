@@ -17,8 +17,9 @@ def create_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
     logger.setLevel(level=level)
     logger.propagate = False
 
-    console_formatter = logging.Formatter("%(asctime)s - %(name)s - "
-                                          "%(levelname)s - %(message)s")
+    console_formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - " "%(levelname)s - %(message)s"
+    )
 
     # https://stackoverflow.com/a/16066513/10291933
     stdout_handler = logging.StreamHandler(stream=sys.stdout)
