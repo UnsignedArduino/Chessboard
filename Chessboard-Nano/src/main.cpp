@@ -30,7 +30,7 @@ union packed_uint64_t {
 void setup() {
   Serial.begin(9600);
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
+  digitalWrite(LED_BUILTIN, HIGH);
 
   for (uint8_t row : rowPins) {
     pinMode(row, OUTPUT);
@@ -56,6 +56,7 @@ void loop() {
     noInterrupts();
     packedBoard.number = board;
     interrupts();
+    digitalWrite(LED_BUILTIN, HIGH);
     Serial.println("Board state: ");
     printBoard();
   }
@@ -91,6 +92,7 @@ void onWireReceiveEvent(int count) {
 void onWireRequestEvent() {
   const uint8_t boardOffset = 0x90;
   if (registerAddr >= boardOffset && registerAddr < boardOffset + 8) {
+    digitalWrite(LED_BUILTIN, LOW);
     Wire.write(packedBoard.bytes[registerAddr - boardOffset]);
   } else {
     Wire.write((uint8_t)0);
