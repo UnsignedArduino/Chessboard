@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 
-const uint8_t I2C_ADDRESS = 0x55;
+const uint8_t I2C_ADDRESS = 0x50;
 
 const uint8_t rowPins[8] = {2, 3, 4, 5, 6, 7, 8, 9};         // outputs
 const uint8_t colPins[8] = {10, 11, 12, A0, A1, A2, A3, A6}; // inputs
@@ -12,7 +12,7 @@ const uint8_t colPins[8] = {10, 11, 12, A0, A1, A2, A3, A6}; // inputs
 
 uint64_t lastBoard = 0;
 uint64_t board = 0;
-
+bool boardChanged = false;
 uint8_t registerAddr = 0;
 
 uint64_t scanBoard();
@@ -30,7 +30,7 @@ union packed_uint64_t {
 void setup() {
   Serial.begin(9600);
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH);
+  digitalWrite(LED_BUILTIN, LOW);
 
   for (uint8_t row : rowPins) {
     pinMode(row, OUTPUT);
@@ -45,6 +45,8 @@ void setup() {
   }
 
   Wire.begin(I2C_ADDRESS);
+  Serial.print("Joining I2C bus at address 0x");
+  Serial.println(I2C_ADDRESS, HEX);
   Wire.onReceive(onWireReceiveEvent);
   Wire.onRequest(onWireRequestEvent);
 }
@@ -55,8 +57,8 @@ void loop() {
     lastBoard = board;
     noInterrupts();
     packedBoard.number = board;
+    boardChanged = true;
     interrupts();
-    digitalWrite(LED_BUILTIN, HIGH);
     Serial.println("Board state: ");
     printBoard();
   }
@@ -91,8 +93,10 @@ void onWireReceiveEvent(int count) {
 
 void onWireRequestEvent() {
   const uint8_t boardOffset = 0x90;
-  if (registerAddr >= boardOffset && registerAddr < boardOffset + 8) {
-    digitalWrite(LED_BUILTIN, LOW);
+  if (registerAddr == boardOffset - 1) {
+    Wire.write((uint8_t)boardChanged);
+    boardChanged = false;
+  } else if (registerAddr >= boardOffset && registerAddr < boardOffset + 8) {
     Wire.write(packedBoard.bytes[registerAddr - boardOffset]);
   } else {
     Wire.write((uint8_t)0);
