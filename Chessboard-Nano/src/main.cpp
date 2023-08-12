@@ -1,14 +1,20 @@
 #include <Arduino.h>
 #include <Wire.h>
 
-const uint8_t shiftInLoadInPin = 8;
-const uint8_t shiftInClockEnablePin = 7;
-const uint8_t shiftInClockPin = 6;
-const uint8_t shiftInDataInPin = 5;
+// Shift in register
+const uint8_t shiftInLoadInPin = 8;      // SH/bar LD (1)
+const uint8_t shiftInClockEnablePin = 7; // CLK INH (15)
+const uint8_t shiftInClockPin = 6;       // CLK (2)
+const uint8_t shiftInDataInPin = 5;      // bar Q sub H (8)
+// Q sub H (9) and SER (10) are unconnected
 
-const uint8_t shiftOutLatchPin = 4;
-const uint8_t shiftOutClockPin = 3;
-const uint8_t shiftOutDataPin = 2;
+// Shift out register
+const uint8_t shiftOutLatchPin = 4; // RCLK (12)
+const uint8_t shiftOutClockPin = 3; // SRCLK (11)
+const uint8_t shiftOutDataPin = 2;  // SER (14)
+// bar SRCLR (10) to 5v
+// bar OE (13) to GND
+// Q sub H' is unconnected
 
 void setupShiftInRegister();
 void setupShiftOutRegister();
