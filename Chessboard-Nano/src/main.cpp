@@ -6,8 +6,15 @@ const uint8_t shiftInClockEnablePin = 7;
 const uint8_t shiftInClockPin = 6;
 const uint8_t shiftInDataInPin = 5;
 
+const uint8_t shiftOutLatchPin = 4;
+const uint8_t shiftOutClockPin = 3;
+const uint8_t shiftOutDataPin = 2;
+
 void setupShiftInRegister();
+void setupShiftOutRegister();
+
 uint8_t readShiftInRegister();
+void writeShiftOutRegister(uint8_t data);
 
 void setup() {
   Serial.begin(9600);
@@ -15,13 +22,12 @@ void setup() {
   digitalWrite(LED_BUILTIN, LOW);
 
   setupShiftInRegister();
+  setupShiftOutRegister();
 }
 
 void loop() {
-  uint8_t data = readShiftInRegister();
-  Serial.print("Pin stats: ");
-  Serial.println(data, BIN);
-  delay(250);
+  const uint8_t data = readShiftInRegister();
+  writeShiftOutRegister(data);
 }
 
 void setupShiftInRegister() {
@@ -47,4 +53,20 @@ uint8_t readShiftInRegister() {
   digitalWrite(shiftInClockEnablePin, HIGH);
 
   return data;
+}
+
+void setupShiftOutRegister() {
+  pinMode(shiftOutLatchPin, OUTPUT);
+  pinMode(shiftOutClockPin, OUTPUT);
+  pinMode(shiftOutDataPin, OUTPUT);
+
+  digitalWrite(shiftOutLatchPin, HIGH);
+  digitalWrite(shiftOutClockPin, LOW);
+  digitalWrite(shiftOutDataPin, LOW);
+}
+
+void writeShiftOutRegister(uint8_t data) {
+  digitalWrite(shiftOutLatchPin, LOW);
+  shiftOut(shiftOutDataPin, shiftOutClockPin, LSBFIRST, data);
+  digitalWrite(shiftOutLatchPin, HIGH);
 }
