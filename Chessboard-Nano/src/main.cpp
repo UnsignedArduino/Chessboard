@@ -2,23 +2,31 @@
 #include <Wire.h>
 
 // Shift in register
-const uint8_t shiftInLoadInPin = 8;      // SH/bar LD (1)
+const uint8_t shiftInLoadInPin = 8;      // SH/~LD (1)
 const uint8_t shiftInClockEnablePin = 7; // CLK INH (15)
 const uint8_t shiftInClockPin = 6;       // CLK (2)
-const uint8_t shiftInDataInPin = 5;      // bar Q sub H (8)
-// Q sub H (9) and SER (10) are unconnected
+const uint8_t shiftInDataInPin = 5;      // ~Q_H (8)
+// Q_H (9) and SER (10) are unconnected
 
 // Shift out register
 const uint8_t shiftOutLatchPin = 4; // RCLK (12)
 const uint8_t shiftOutClockPin = 3; // SRCLK (11)
 const uint8_t shiftOutDataPin = 2;  // SER (14)
-// bar SRCLR (10) to 5v
-// bar OE (13) to GND
-// Q sub H' is unconnected
+// ~SRCLR (10) to 5v
+// ~OE (13) to GND
+// Q_H' is unconnected
 
+#define bitSet64(value, bit) ((value) |= (1ULL << (bit)))
+#define bitClear64(value, bit) ((value) &= ~(1ULL << (bit)))
+#define bitWrite64(value, bit, bitvalue) (bitvalue ? bitSet64(value, bit) : bitClear64(value, bit))
+
+uint64_t board = 0;
+uint64_t lastBoard = 0;
+
+uint64_t scanBoard();
+void printBoard();
 void setupShiftInRegister();
 void setupShiftOutRegister();
-
 uint8_t readShiftInRegister();
 void writeShiftOutRegister(uint8_t data);
 
@@ -32,8 +40,33 @@ void setup() {
 }
 
 void loop() {
-  const uint8_t data = readShiftInRegister();
-  writeShiftOutRegister(data);
+  board = scanBoard();
+  if (lastBoard != board) {
+    lastBoard = board;
+    Serial.println("Board state:");
+    printBoard();
+  }
+}
+
+uint64_t scanBoard() {
+  uint64_t temp = 0;
+  for (uint8_t row = 0; row < 8; row++) {
+    writeShiftOutRegister(1 << row);
+    uint64_t colsDown = readShiftInRegister();
+    colsDown <<= row * 8;
+    temp |= colsDown;
+  }
+  writeShiftOutRegister(0);
+  return temp;
+}
+
+void printBoard() {
+  for (uint8_t i = 0; i < 64; i++) {
+    Serial.print(bitRead(board, i) ? 1 : 0);
+    if ((i + 1) % 8 == 0) {
+      Serial.println();
+    }
+  }
 }
 
 void setupShiftInRegister() {
@@ -55,7 +88,7 @@ uint8_t readShiftInRegister() {
 
   digitalWrite(shiftInClockPin, HIGH);
   digitalWrite(shiftInClockEnablePin, LOW);
-  uint8_t data = ~shiftIn(shiftInDataInPin, shiftInClockPin, LSBFIRST);
+  uint8_t data = ~shiftIn(shiftInDataInPin, shiftInClockPin, MSBFIRST);
   digitalWrite(shiftInClockEnablePin, HIGH);
 
   return data;
@@ -73,6 +106,6 @@ void setupShiftOutRegister() {
 
 void writeShiftOutRegister(uint8_t data) {
   digitalWrite(shiftOutLatchPin, LOW);
-  shiftOut(shiftOutDataPin, shiftOutClockPin, LSBFIRST, data);
+  shiftOut(shiftOutDataPin, shiftOutClockPin, MSBFIRST, data);
   digitalWrite(shiftOutLatchPin, HIGH);
 }
