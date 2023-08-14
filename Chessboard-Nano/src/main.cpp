@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <Wire.h>
 
+const uint8_t I2C_ADDRESS = 0x50;
+
 // Shift in register
 const uint8_t shiftInLoadInPin = 8;      // SH/~LD (1)
 const uint8_t shiftInClockEnablePin = 7; // CLK INH (15)
@@ -22,6 +24,15 @@ const uint8_t shiftOutDataPin = 2;  // SER (14)
 
 uint64_t board = 0;
 uint64_t lastBoard = 0;
+bool boardChanged = false;
+uint8_t registerAddr = 0;
+
+// clang-format off
+union packed_uint64_t {
+  uint64_t number;
+  uint8_t bytes[8];
+} packedBoard;
+// clang-format on
 
 uint64_t scanBoard();
 void printBoard();
@@ -29,6 +40,8 @@ void setupShiftInRegister();
 void setupShiftOutRegister();
 uint8_t readShiftInRegister();
 void writeShiftOutRegister(uint8_t data);
+void onWireReceiveEvent(int count);
+void onWireRequestEvent();
 
 void setup() {
   Serial.begin(9600);
@@ -37,12 +50,22 @@ void setup() {
 
   setupShiftInRegister();
   setupShiftOutRegister();
+
+  Wire.begin(I2C_ADDRESS);
+  Serial.print("Joining I2C bus at address 0x");
+  Serial.println(I2C_ADDRESS, HEX);
+  Wire.onReceive(onWireReceiveEvent);
+  Wire.onRequest(onWireRequestEvent);
 }
 
 void loop() {
   board = scanBoard();
   if (lastBoard != board) {
     lastBoard = board;
+    noInterrupts();
+    packedBoard.number = board;
+    boardChanged = true;
+    interrupts();
     Serial.println("Board state:");
     printBoard();
   }
@@ -108,4 +131,20 @@ void writeShiftOutRegister(uint8_t data) {
   digitalWrite(shiftOutLatchPin, LOW);
   shiftOut(shiftOutDataPin, shiftOutClockPin, MSBFIRST, data);
   digitalWrite(shiftOutLatchPin, HIGH);
+}
+
+void onWireReceiveEvent(int count) {
+  registerAddr = Wire.read();
+}
+
+void onWireRequestEvent() {
+  const uint8_t boardOffset = 0x90;
+  if (registerAddr == boardOffset - 1) {
+    Wire.write((uint8_t)boardChanged);
+    boardChanged = false;
+  } else if (registerAddr >= boardOffset && registerAddr < boardOffset + 8) {
+    Wire.write(packedBoard.bytes[registerAddr - boardOffset]);
+  } else {
+    Wire.write((uint8_t)0);
+  }
 }
