@@ -4,3 +4,5 @@ Chessboard-Nano/.vscode/c_cpp_properties.json
 Chessboard-Nano/.vscode/launch.json
 Chessboard-Nano/.vscode/ipch
 Chessboard-Pi/.idea
+Chessboard-Pi/venv
+__pycache__
