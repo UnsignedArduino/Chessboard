@@ -28,6 +28,8 @@ const uint8_t shiftOutDataPin = 2;  // SER (14)
 // Comment out to not flip the board
 #define FLIP_BOARD
 
+const uint8_t debounceTime = 50;
+
 uint64_t board = 0;
 uint64_t lastBoard = 0;
 bool boardChanged = false;
@@ -82,8 +84,19 @@ void setup() {
 }
 
 void loop() {
-  board = scanBoard();
-  if (lastBoard != board) {
+  static uint32_t lastDebounce = 0;
+  static uint64_t lastBouncingBoard = 0;
+  const uint64_t bouncingBoard = scanBoard();
+  if (bouncingBoard != lastBouncingBoard) {
+    lastDebounce = millis();
+    lastBouncingBoard = bouncingBoard;
+  }
+
+  if (millis() - lastDebounce > debounceTime) {
+    board = lastBouncingBoard;
+  }
+
+  if (board != lastBoard) {
     lastBoard = board;
     noInterrupts();
     packedBoard.number = board;
