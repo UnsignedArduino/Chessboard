@@ -12,7 +12,7 @@ logger = create_logger(name=__name__, level=logging.DEBUG)
 CHESSBOARD_ADDRESS = 0x50
 
 
-class ReedSwitchChessboardReader:
+class RSCbReader:
     state: List[List[bool]]
     address: int
     device: I2CDevice
@@ -49,14 +49,36 @@ class ReedSwitchChessboardReader:
         self.device.write_then_readinto(bytes([reg_addr]), result)
         return result[0]
 
-    def __str__(self):
+    @staticmethod
+    def copy_state(s: List[List[bool]]) -> List[List[bool]]:
+        new_s = []
+        for ri in range(8):
+            row = []
+            for ci in range(8):
+                row.append(s[ri][ci])
+            new_s.append(row)
+        return new_s
+
+    @staticmethod
+    def compare_states(s1: List[List[bool]], s2: List[List[bool]]) -> bool:
+        for ri in range(len(s1)):
+            for ci in range(len(s1[ri])):
+                if s1[ri][ci] != s2[ri][ci]:
+                    return False
+        return True
+
+    @staticmethod
+    def stringify_state(s: List[List[bool]]) -> str:
         s = ""
-        for ri, row in enumerate(self.state):
+        for ri, row in enumerate(s):
             for col in row:
                 s += "1" if col else "0"
-            if ri < len(self.state) - 1:
+            if ri < len(s) - 1:
                 s += "\n"
         return s
+
+    def __str__(self):
+        return RSCbReader.stringify_state(self.state)
 
     def __repr__(self):
         return self.__str__()

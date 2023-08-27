@@ -1,31 +1,23 @@
 import logging
-from enum import Enum
+from typing import List
 
 import chess
 
 from src.utils.logger import create_logger
-from .reader import ReedSwitchChessboardReader
+from .reader import RSCbReader
 
 logger = create_logger(name=__name__, level=logging.DEBUG)
 
 
-class ReedSwitchChessboardState(Enum):
-    NullState = 0
-    WaitingForSetup = 1
-    WaitingForMove = 2
-    ThinkingMove = 3
-    GameEnd = 4
-
-
-class ReedSwitchChessboard:
+class RSCb:
     board: chess.Board
-    reader: ReedSwitchChessboardReader
-    playingAs: bool
+    last_state: List[List[bool]]
+    reader: RSCbReader
 
-    def __init__(self, playingAs: bool = chess.WHITE):
+    def __init__(self):
         self.board = chess.Board()
-        self.reader = ReedSwitchChessboardReader()
-        self.playingAs = playingAs
+        self.reader = RSCbReader()
+        self.last_state = RSCbReader.copy_state(self.reader.state)
 
     def readerBitsMatchBoard(self) -> bool:
         for ri, row in enumerate(self.reader.state):
@@ -33,9 +25,6 @@ class ReedSwitchChessboard:
                 if col != (self.board.piece_at(((7 - ri) * 8) + ci) is not None):
                     return False
         return True
-
-    def update(self) -> ReedSwitchChessboardState:
-        return ReedSwitchChessboardState.NullState
 
     def __str__(self):
         return self.board.__str__()
