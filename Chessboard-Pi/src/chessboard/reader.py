@@ -4,15 +4,15 @@ from typing import List
 import board
 from adafruit_bus_device.i2c_device import I2CDevice
 
-from utils.bits import bit_read
-from utils.logger import create_logger
+from src.utils.bits import bit_read
+from src.utils.logger import create_logger
 
 logger = create_logger(name=__name__, level=logging.DEBUG)
 
 CHESSBOARD_ADDRESS = 0x50
 
 
-class ReedSwitchChessboard:
+class ReedSwitchChessboardReader:
     state: List[List[bool]]
     address: int
     device: I2CDevice
@@ -51,10 +51,11 @@ class ReedSwitchChessboard:
 
     def __str__(self):
         s = ""
-        for row in self.state:
+        for ri, row in enumerate(self.state):
             for col in row:
                 s += "1" if col else "0"
-            s += "\n"
+            if ri < len(self.state) - 1:
+                s += "\n"
         return s
 
     def __repr__(self):
