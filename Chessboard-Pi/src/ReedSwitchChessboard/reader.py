@@ -1,7 +1,8 @@
 import logging
-from typing import List
+from typing import List, NamedTuple
 
 import board
+import chess
 from adafruit_bus_device.i2c_device import I2CDevice
 
 from src.utils.bits import bit_read
@@ -9,19 +10,43 @@ from src.utils.logger import create_logger
 
 logger = create_logger(name=__name__, level=logging.DEBUG)
 
-CHESSBOARD_ADDRESS = 0x50
+
+RSCbReaderState = List[List[bool]]
+
+
+class RSCbComparedState(NamedTuple):
+    added: List[chess.Square]
+    removed: List[chess.Square]
+
+
+def string_rows_to_state(rows: List[str]) -> RSCbReaderState:
+    return [[char == "1" for char in list(row)] for row in rows]
 
 
 class RSCbReader:
-    state: List[List[bool]]
+    state: RSCbReaderState
     address: int
     device: I2CDevice
+
+    CHESSBOARD_ADDRESS = 0x50
+    STARTING_POSITION_BITS = string_rows_to_state(
+        [
+            "11111111",
+            "11111111",
+            "00000000",
+            "00000000",
+            "00000000",
+            "00000000",
+            "11111111",
+            "11111111",
+        ]
+    )
 
     def __init__(self):
         self.state = []
         for i in range(8):
             self.state.append([False] * 8)
-        self.address = CHESSBOARD_ADDRESS
+        self.address = RSCbReader.CHESSBOARD_ADDRESS
         logger.debug("Initiating hardware")
         self.device = I2CDevice(board.I2C(), self.address)
         logger.debug(f"Chessboard on I2C bus at 0x{self.address:02x}")
@@ -50,7 +75,11 @@ class RSCbReader:
         return result[0]
 
     @staticmethod
-    def copy_state(s: List[List[bool]]) -> List[List[bool]]:
+    def pos_to_square(row: int, col: int) -> chess.Square:
+        return chess.Square(((7 - row) * 8) + col)
+
+    @staticmethod
+    def copy_state(s: RSCbReaderState) -> RSCbReaderState:
         new_s = []
         for ri in range(8):
             row = []
@@ -60,7 +89,7 @@ class RSCbReader:
         return new_s
 
     @staticmethod
-    def compare_states(s1: List[List[bool]], s2: List[List[bool]]) -> bool:
+    def equal_states(s1: RSCbReaderState, s2: RSCbReaderState) -> bool:
         for ri in range(len(s1)):
             for ci in range(len(s1[ri])):
                 if s1[ri][ci] != s2[ri][ci]:
@@ -68,12 +97,26 @@ class RSCbReader:
         return True
 
     @staticmethod
-    def stringify_state(s: List[List[bool]]) -> str:
+    def compare_states(s1: RSCbReaderState, s2: RSCbReaderState) -> RSCbComparedState:
+        added = []
+        removed = []
+        for ri in range(8):
+            for ci in range(8):
+                first = s1[ri][ci]
+                second = s2[ri][ci]
+                if first and not second:
+                    removed.append(RSCbReader.pos_to_square(ri, ci))
+                elif not first and second:
+                    added.append(RSCbReader.pos_to_square(ri, ci))
+        return RSCbComparedState(added=added, removed=removed)
+
+    @staticmethod
+    def stringify_state(state: RSCbReaderState) -> str:
         s = ""
-        for ri, row in enumerate(s):
+        for ri, row in enumerate(state):
             for col in row:
                 s += "1" if col else "0"
-            if ri < len(s) - 1:
+            if ri < len(state) - 1:
                 s += "\n"
         return s
 
