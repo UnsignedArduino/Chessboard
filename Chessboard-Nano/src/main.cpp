@@ -1,14 +1,9 @@
 #include <Arduino.h>
 #include <Wire.h>
 
-const uint8_t I2C_ADDRESS = 0x50;
+#define FAKE_BOARD
 
-// Shift in register
-const uint8_t shiftInLoadInPin = 8;      // SH/~LD (1)
-const uint8_t shiftInClockEnablePin = 7; // CLK INH (15)
-const uint8_t shiftInClockPin = 6;       // CLK (2)
-const uint8_t shiftInDataInPin = 5;      // ~Q_H (8)
-// Q_H (9) and SER (10) are unconnected
+const uint8_t I2C_ADDRESS = 0x50;
 
 // Shift out register
 const uint8_t shiftOutLatchPin = 4; // RCLK (12)
@@ -47,9 +42,7 @@ uint64_t scanBoard();
 uint64_t rotateBoard90Degrees(uint64_t board);
 #endif
 void printBoard();
-void setupShiftInRegister();
 void setupShiftOutRegister();
-uint8_t readShiftInRegister();
 void writeShiftOutRegister(uint8_t data);
 void onWireReceiveEvent(int count);
 void onWireRequestEvent();
@@ -60,7 +53,6 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
 
-  setupShiftInRegister();
   setupShiftOutRegister();
 
 #ifdef ROTATE_BOARD
@@ -75,18 +67,36 @@ void setup() {
 #else
   Serial.println("Will not flip board");
 #endif
+#ifdef FAKE_BOARD
+  Serial.println("Faking board enabled, send file then rank to toggle bit.");
+#endif
 
   Wire.begin(I2C_ADDRESS);
   Serial.print("Joining I2C bus at address 0x");
   Serial.println(I2C_ADDRESS, HEX);
   Wire.onReceive(onWireReceiveEvent);
   Wire.onRequest(onWireRequestEvent);
+
+  printBoard();
 }
 
 void loop() {
+#ifdef FAKE_BOARD
+  if (Serial.available() >= 2) {
+    const uint8_t file = Serial.peek() >= 'a' && Serial.peek() <= 'h' ? Serial.read() - 'a' : Serial.read() - 'A';
+    const uint8_t rank = Serial.parseInt();
+    Serial.print("Toggling ");
+    Serial.write(file + 'A');
+    Serial.println(rank);
+    const uint8_t bitPos = (8 - rank) * 8 + file;
+    bitWrite64(board, bitPos, !bitRead(board, bitPos));
+  }
+#else
   static uint32_t lastDebounce = 0;
   static uint64_t lastBouncingBoard = 0;
+
   const uint64_t bouncingBoard = scanBoard();
+
   if (bouncingBoard != lastBouncingBoard) {
     lastDebounce = millis();
     lastBouncingBoard = bouncingBoard;
@@ -95,6 +105,7 @@ void loop() {
   if (millis() - lastDebounce > debounceTime) {
     board = lastBouncingBoard;
   }
+#endif
 
   if (board != lastBoard) {
     lastBoard = board;
@@ -109,13 +120,6 @@ void loop() {
 
 uint64_t scanBoard() {
   uint64_t temp = 0;
-  for (uint8_t row = 0; row < 8; row++) {
-    writeShiftOutRegister(1 << row);
-    uint64_t colsDown = readShiftInRegister();
-    colsDown <<= row * 8;
-    temp |= colsDown;
-  }
-  writeShiftOutRegister(0);
 #if ROTATE_BOARD == 90
   temp = rotateBoard90Degrees(temp);
 #elif ROTATE_BOARD == 180
@@ -161,42 +165,22 @@ uint64_t rotateBoard90Degrees(uint64_t board) {
 
 void printBoard() {
   for (uint8_t i = 0; i < 64; i++) {
-    Serial.print(bitRead(board, i) ? 1 : 0);
+    if (i % 8 == 0) {
+      Serial.print((64 - i) / 8);
+      Serial.print(' ');
+    }
+    Serial.print(bitRead(board, i) ? '#' : '.');
+    Serial.print(' ');
     if ((i + 1) % 8 == 0) {
       Serial.println();
     }
   }
-}
-
-void setupShiftInRegister() {
-  pinMode(shiftInLoadInPin, OUTPUT);
-  pinMode(shiftInClockEnablePin, OUTPUT);
-  pinMode(shiftInClockPin, OUTPUT);
-  pinMode(shiftInDataInPin, INPUT);
-
-  digitalWrite(shiftInLoadInPin, HIGH);
-  digitalWrite(shiftInClockEnablePin, HIGH);
-  digitalWrite(shiftInClockPin, LOW);
-}
-
-uint8_t readShiftInRegister() {
-  digitalWrite(shiftInLoadInPin, LOW);
-  delayMicroseconds(5);
-  digitalWrite(shiftInLoadInPin, HIGH);
-  delayMicroseconds(5);
-
-  digitalWrite(shiftInClockPin, HIGH);
-  digitalWrite(shiftInClockEnablePin, LOW);
-  uint8_t data = ~shiftIn(shiftInDataInPin, shiftInClockPin,
-#ifdef FLIP_BOARD
-                          LSBFIRST
-#else
-                          MSBFIRST
-#endif
-  );
-  digitalWrite(shiftInClockEnablePin, HIGH);
-
-  return data;
+  Serial.print("  ");
+  for (char file = 'A'; file <= 'H'; file++) {
+    Serial.print(file);
+    Serial.print(' ');
+  }
+  Serial.println();
 }
 
 void setupShiftOutRegister() {

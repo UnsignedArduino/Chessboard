@@ -53,9 +53,9 @@ class RSCb:
                 # logger.debug("Black to move")
                 return RSCbState.WaitingForBlackMove
         else:
-            # logger.debug("Reader does not match chess board game, piece moving?")
+            logger.debug("Reader does not match chess board game, piece moving?")
             comparison = RSCbReader.compare_states(self.last_state, self.reader.state)
-            # logger.debug(comparison)
+            logger.debug(comparison)
             if len(comparison.added) == 1 and len(comparison.removed):
                 logger.debug("Trying move")
                 try:
