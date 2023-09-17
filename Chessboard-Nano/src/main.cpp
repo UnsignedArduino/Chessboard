@@ -1,27 +1,34 @@
 #include <Arduino.h>
 #include <Wire.h>
 
-#define FAKE_BOARD
+// #define FAKE_BOARD
 
 const uint8_t I2C_ADDRESS = 0x50;
 
-// Shift out register
-const uint8_t shiftOutLatchPin = 4; // RCLK (12)
-const uint8_t shiftOutClockPin = 3; // SRCLK (11)
-const uint8_t shiftOutDataPin = 2;  // SER (14)
-// ~SRCLR (10) to 5v
-// ~OE (13) to GND
-// Q_H' is unconnected
+const uint8_t CD74HC4067_COM_S0 = 2;
+const uint8_t CD74HC4067_COM_S1 = 3;
+const uint8_t CD74HC4067_COM_S2 = 4;
+const uint8_t CD74HC4067_COM_S3 = 5;
+const uint8_t CD74HC4067_0_EN = 6;
+const uint8_t CD74HC4067_1_EN = 7;
+const uint8_t CD74HC4067_2_EN = 8;
+const uint8_t CD74HC4067_3_EN = 9;
+const uint8_t CD74HC4067_COM_SIG = A7;
+
+// 90, 180, 270 degree rotation
+// Comment out for no rotation
+// #define ROTATE_BOARD
+// Comment out to not flip the board
+// #define FLIP_BOARD
+
+// #define DEBUG_LINEAR_HALLS
+
+const uint8_t MUX_EN[] = {CD74HC4067_0_EN, CD74HC4067_1_EN, CD74HC4067_2_EN, CD74HC4067_3_EN};
+const uint8_t MUX_SIG[] = {CD74HC4067_COM_S0, CD74HC4067_COM_S1, CD74HC4067_COM_S2, CD74HC4067_COM_S3};
 
 #define bitSet64(value, bit) ((value) |= (1ULL << (bit)))
 #define bitClear64(value, bit) ((value) &= ~(1ULL << (bit)))
 #define bitWrite64(value, bit, bitvalue) (bitvalue ? bitSet64(value, bit) : bitClear64(value, bit))
-
-// 90, 180, 270 degree rotation
-// Comment out for no rotation
-#define ROTATE_BOARD 90
-// Comment out to not flip the board
-#define FLIP_BOARD
 
 const uint8_t debounceTime = 50;
 
@@ -37,13 +44,14 @@ union packed_uint64_t {
 } packedBoard;
 // clang-format on
 
+void setupLinearHalls();
+void readLinearHalls(int16_t result[64]);
+void printLinearHalls(int16_t halls[64]);
 uint64_t scanBoard();
+void printBoard(uint64_t b);
 #ifdef ROTATE_BOARD
 uint64_t rotateBoard90Degrees(uint64_t board);
 #endif
-void printBoard();
-void setupShiftOutRegister();
-void writeShiftOutRegister(uint8_t data);
 void onWireReceiveEvent(int count);
 void onWireRequestEvent();
 
@@ -53,7 +61,7 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
 
-  setupShiftOutRegister();
+  setupLinearHalls();
 
 #ifdef ROTATE_BOARD
   Serial.print("Will rotate board by ");
@@ -77,7 +85,7 @@ void setup() {
   Wire.onReceive(onWireReceiveEvent);
   Wire.onRequest(onWireRequestEvent);
 
-  printBoard();
+  printBoard(board);
 }
 
 void loop() {
@@ -114,12 +122,79 @@ void loop() {
     boardChanged = true;
     interrupts();
     Serial.println("Board state:");
-    printBoard();
+    printBoard(board);
+  }
+}
+
+void setupLinearHalls() {
+  Serial.println("Setting up linear hall sensors and multiplexers");
+  for (const uint8_t pin : MUX_EN) {
+    pinMode(pin, OUTPUT);
+    digitalWrite(pin, HIGH);
+  }
+  for (const uint8_t pin : MUX_SIG) {
+    pinMode(pin, OUTPUT);
+    digitalWrite(pin, LOW);
+  }
+  pinMode(CD74HC4067_COM_SIG, INPUT);
+}
+
+void readLinearHalls(int16_t result[64]) {
+  for (uint8_t mux = 0; mux < 4; mux++) {
+    digitalWrite(MUX_EN[mux], LOW);
+    for (uint8_t channel = 0; channel < 16; channel++) {
+      for (uint8_t control = 0; control < 4; control++) {
+        digitalWrite(MUX_SIG[control], bitRead(channel, control));
+      }
+      result[mux * 16 + channel] = analogRead(CD74HC4067_COM_SIG);
+    }
+    digitalWrite(MUX_EN[mux], HIGH);
+  }
+}
+
+void printLinearHalls(int16_t halls[64]) {
+  Serial.print("   ");
+  for (uint8_t chan = 0; chan < 16; chan++) {
+    char buf[6];
+    snprintf(buf, 6, "%4d ", chan);
+    Serial.print(buf);
+  }
+  Serial.println();
+  for (uint8_t mux = 0; mux < 4; mux++) {
+    Serial.print(mux);
+    Serial.print(": ");
+    for (uint8_t chan = 0; chan < 16; chan++) {
+      char buf[6];
+      snprintf(buf, 6, "%4d ", halls[mux * 16 + chan]);
+      Serial.print(buf);
+    }
+    Serial.println();
   }
 }
 
 uint64_t scanBoard() {
+  int16_t linearHalls[64] = {};
+  readLinearHalls(linearHalls);
+
+#ifdef DEBUG_LINEAR_HALLS
+  Serial.println("Linear halls: ");
+  printLinearHalls(linearHalls);
+#endif
+
   uint64_t temp = 0;
+
+  for (uint8_t i = 0; i < 64; i++) {
+    const uint16_t deviation = abs(512 - linearHalls[i]);
+    const bool piecePresent = deviation > 10;
+    bitWrite64(temp,
+#ifdef FLIP_BOARD
+               63 - i,
+#else
+               i,
+#endif
+               piecePresent);
+  }
+
 #if ROTATE_BOARD == 90
   temp = rotateBoard90Degrees(temp);
 #elif ROTATE_BOARD == 180
@@ -130,6 +205,13 @@ uint64_t scanBoard() {
   temp = rotateBoard90Degrees(temp);
   temp = rotateBoard90Degrees(temp);
 #endif
+
+#ifdef DEBUG_LINEAR_HALLS
+  Serial.println("Board state: ");
+  printBoard(temp);
+  delay(1000);
+#endif
+
   return temp;
 }
 
@@ -163,13 +245,13 @@ uint64_t rotateBoard90Degrees(uint64_t board) {
 }
 #endif
 
-void printBoard() {
+void printBoard(uint64_t b) {
   for (uint8_t i = 0; i < 64; i++) {
     if (i % 8 == 0) {
       Serial.print((64 - i) / 8);
       Serial.print(' ');
     }
-    Serial.print(bitRead(board, i) ? '#' : '.');
+    Serial.print(bitRead(b, i) ? '#' : '.');
     Serial.print(' ');
     if ((i + 1) % 8 == 0) {
       Serial.println();
@@ -181,22 +263,6 @@ void printBoard() {
     Serial.print(' ');
   }
   Serial.println();
-}
-
-void setupShiftOutRegister() {
-  pinMode(shiftOutLatchPin, OUTPUT);
-  pinMode(shiftOutClockPin, OUTPUT);
-  pinMode(shiftOutDataPin, OUTPUT);
-
-  digitalWrite(shiftOutLatchPin, HIGH);
-  digitalWrite(shiftOutClockPin, LOW);
-  digitalWrite(shiftOutDataPin, LOW);
-}
-
-void writeShiftOutRegister(uint8_t data) {
-  digitalWrite(shiftOutLatchPin, LOW);
-  shiftOut(shiftOutDataPin, shiftOutClockPin, LSBFIRST, data);
-  digitalWrite(shiftOutLatchPin, HIGH);
 }
 
 void onWireReceiveEvent(int count) {
