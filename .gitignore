@@ -6,6 +6,3 @@ Chessboard-Nano/.vscode/ipch
 Chessboard-Pi/.idea
 Chessboard-Pi/venv
 __pycache__
-Chessboard-PCB/*.kicad_prl
-Chessboard-PCB/*-backups
-Chessboard-PCB/fp-info-cache
